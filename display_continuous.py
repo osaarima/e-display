@@ -13,6 +13,9 @@ import board
 from adafruit_epd.ssd1680 import Adafruit_SSD1680
 from adafruit_epd.epd import Adafruit_EPD
 from PIL import Image, ImageDraw, ImageFont
+from os import walk
+from os import path
+from numpy import random
 
 boldSize=26
 bold_font = ImageFont.truetype(
@@ -29,28 +32,37 @@ def create_weather_image(width, height, show_in_out, filename):
     #print(display.width, display.height) #250 122
     draw = ImageDraw.Draw(image)
 
-    with open("/home/piirakka/weather.csv", 'r', encoding="utf-8") as fil:
-        if show_in_out==1:
-            humi_ind = 2
-            temp_ind = 3
-        elif show_in_out==2:
-            humi_ind = 6
-            temp_ind = 7
-        for num,line in enumerate(fil):
-            if num==0:
-                continue
-            splitted = line.split(',')
-            date = splitted[0]
-            time = splitted[1]
-            humi = splitted[humi_ind]
-            temp = splitted[temp_ind]
+    #timing1 = time.perf_counter()
+    try:
+        with open("/home/piirakka/weather.csv", 'r', encoding="utf-8") as fil:
+            #raise OSError(1, "testing the exception")
+            if show_in_out==1:
+                humi_ind = 2
+                temp_ind = 3
+            elif show_in_out==2:
+                humi_ind = 6
+                temp_ind = 7
+            for num,line in enumerate(fil):
+                if num==0:
+                    continue
+                splitted = line.split(',')
+                #date = splitted[0]
+                savedTime = splitted[1]
+                savedHumi = splitted[humi_ind]
+                savedTemp = splitted[temp_ind]
+    except OSError as err:
+        print("File is in use (most likely), trying again in a couple of seconds. Message: ", err)
+        time.sleep(5)
+        return None
 
+    #timing2 = time.perf_counter()
+    #print("Reading took: ", timing2-timing1, "seconds")
     if show_in_out==1:
         printTitle = "Sää ulkona"
     elif show_in_out==2:
         printTitle = "Sää sisällä"
-    printTime  = "{}".format(time)
-    printData  = "{} °C\n{} %".format(temp, humi)
+    printTime  = "{}".format(savedTime)
+    printData  = "{} °C\n{} %".format(savedTemp, savedHumi)
     yCoord = 3
     draw.text((5,yCoord), printTitle, font=bold_font, fill=BLACK,)
     yCoord+=boldSize+3
@@ -88,13 +100,25 @@ if __name__ == "__main__":
 
     display.rotation = 1
 
-    filename = "/home/piirakka/e-display/pics/yuuka_bw.png"
+    filenames = []
+    totalPics = 0
+    defPic = 0
+    #Find all black and whit (bw) pics in the picture folder and list them.
+    #"yuuka" picture is the default one.
+    for (dirpath, dirnames, fnames) in walk("/home/piirakka/e-display/pics/"):
+        for fname in fnames:
+            if "bw" in fname:
+                filenames.append(path.join(dirpath,fname))
+                if "yuuka" in fname:
+                    defPic=totalPics
+                totalPics+=1
 
     weather_refresh = None
     #i=0
 
     down_button_pressed = False
     show_in_out = 1
+    show_this_pic = defPic
     while True:
         # only query the weather every 5 minutes (and on first run)
         if (not weather_refresh) or (time.monotonic() - weather_refresh) > 300:
@@ -102,16 +126,33 @@ if __name__ == "__main__":
             image = create_weather_image(display.width,
                                          display.height,
                                          show_in_out,
-                                         filename)
+                                         filenames[show_this_pic])
+            #If image was not successfully made, lets try another time in a new loop
+            if not image:
+                weather_refresh = None
+                continue
             display.fill(Adafruit_EPD.WHITE)
             display.image(image)
             display.display()
 
+        #If button 1 is pressed, we want to change to change between
+        #indoor and outdoor information.
         if not up_button.value:
             if show_in_out==1:
                 show_in_out = 2
             else:
                 show_in_out = 1
+            #After pushing button we want a refresh
+            weather_refresh = None
+
+        #If button 2 is pressed, we want to change the pic randomly,
+        #but not to the same one as previously.
+        if not down_button.value:
+            while True:
+                ranPic = random.randint(0,totalPics)
+                if ranPic!=show_this_pic:
+                    break
+            show_this_pic=ranPic
             #After pushing button we want a refresh
             weather_refresh = None
 

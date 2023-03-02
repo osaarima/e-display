@@ -61,7 +61,7 @@ draw.text((5,yCoord), printTime, font=smol_font, fill=BLACK,)
 yCoord+=smolSize+6
 draw.text((5,yCoord), printData, font=bold_font, fill=BLACK,)
 #draw.line((0,image.size[1],image.size[0],0), fill=BLACK,)
-filename = "/home/piirakka/e-display/yuuka_bw.png"
+filename = "/home/piirakka/e-display/pics/nekomiko_bw.png"
 with Image.open(filename).convert("RGB") as paste_img:
     resize_lim = 90
     if paste_img.size[1]>resize_lim:
