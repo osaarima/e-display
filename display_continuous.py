@@ -153,7 +153,13 @@ if __name__ == "__main__":
     #i=0
 
     show_in_out = 1
-    show_this_pic = defPic
+    if args.rand:
+        #If pic is choosen randomly every time, we would like to
+        #see the default picture also happen sometime when the
+        #program is ran the first time.
+        show_this_pic = -1
+    else:
+        show_this_pic = defPic
     randomize_every_update = args.rand
     down_button_pressed = False
     while True:
