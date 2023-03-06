@@ -56,13 +56,14 @@ def create_weather_image(filename_weather,width, height, show_in_out, filename_p
         print("File is in use (most likely), trying again in a couple of seconds. Message: ", err)
         time.sleep(5)
         return None
-
     #timing2 = time.perf_counter()
     #print("Reading took: ", timing2-timing1, "seconds")
+
+    #Then comes the text
     if show_in_out==1:
-        printTitle = "Sää ulkona"
+        printTitle = "Ulko"
     elif show_in_out==2:
-        printTitle = "Sää sisällä"
+        printTitle = "Sisä"
     printTime  = "{}".format(savedTime)
     printData  = "{} °C\n{} %".format(savedTemp, savedHumi)
     yCoord = 3
@@ -71,16 +72,32 @@ def create_weather_image(filename_weather,width, height, show_in_out, filename_p
     draw.text((5,yCoord), printTime, font=smol_font, fill=BLACK,)
     yCoord+=smolSize+6
     draw.text((5,yCoord), printData, font=bold_font, fill=BLACK,)
-    #draw.line((0,image.size[1],image.size[0],0), fill=BLACK,)
+    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((5,yCoord), printData, font=bold_font)
+
     with Image.open(filename_pic).convert("RGB") as paste_img:
-        resize_lim = 90
-        if paste_img.size[1]>resize_lim:
-            #print(int(paste_img.size[0]*resize_lim/paste_img.size[1]))
-            paste_img=paste_img.resize((int(paste_img.size[0]*resize_lim/paste_img.size[1]), resize_lim),resample=Image.NEAREST, reducing_gap=3.0)
+        resize_lim_h = height #90
+        if paste_img.size[1]>resize_lim_h:
+            paste_img=paste_img.resize((int(paste_img.size[0]*resize_lim_h/paste_img.size[1]), resize_lim_h),resample=Image.LANCZOS, reducing_gap=3.0)
+        resize_lim_w = width-bbRight
+        if paste_img.size[0]>resize_lim_w:
+            paste_img=paste_img.resize((resize_lim_w, int(paste_img.size[1]*resize_lim_w/paste_img.size[0])),resample=Image.LANCZOS, reducing_gap=3.0)
         if "yuuka" in filename_pic:
             paste_img=paste_img.transpose(method=Image.FLIP_LEFT_RIGHT)
-        #Lets place the image we have at the lower right corner.
-        image.paste(paste_img, box=(image.size[0]-paste_img.size[0],image.size[1]-paste_img.size[1]), mask=None)
+
+        #If the image has space, let's center it in the available space.
+        #Otherwise it will be tightly fitted into the space.
+        if paste_img.size[0]!=resize_lim_w:
+            paste_l_pos = int((width+bbRight)/2 - paste_img.size[0]/2)
+        else:
+            paste_l_pos = width-paste_img.size[0]
+        if paste_img.size[1]!=resize_lim_h:
+            paste_t_pos = int(height/2 - paste_img.size[1]/2)
+        else:
+            paste_t_pos = height-paste_img.size[1]
+        image.paste(paste_img, box=(paste_l_pos,paste_t_pos), mask=None)
+
+    #draw.line((bbRight,0,bbRight,height), fill=BLACK,)
+    #print(width-bbRight)
 
     return image
 
@@ -117,6 +134,11 @@ if __name__ == "__main__":
                         type=str,
                         nargs='?',
                         default="/home/piirakka/weather.csv")
+    parser.add_argument("--onetime",
+                        "-o",
+                        help="Run the refresh only one time. Mainly used for testing",
+                        action="store_true",
+                        default=False)
     args = parser.parse_args()
 
     spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
@@ -203,4 +225,6 @@ if __name__ == "__main__":
         time.sleep(0.1)
         #print("test",i,"button1:",up_button.value,"button2:",down_button.value)
         #i+=1
+        if args.onetime:
+            break
 
