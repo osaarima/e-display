@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Code by me, but the original template and ideas from Adafruit Industries:
 # SPDX-FileCopyrightText: 2020 Melissa LeBlanc-Williams for Adafruit Industries
 # SPDX-License-Identifier: MIT
@@ -210,48 +212,51 @@ if __name__ == "__main__":
         show_this_pic = defPic
     randomize_every_update = args.rand
     down_button_pressed = False
-    while True:
-        # only query the weather every 5 minutes (and on first run)
-        if (not weather_refresh) or (time.monotonic() - weather_refresh) > 300:
-            if randomize_every_update:
-                show_this_pic = select_random_not_this(totalPics,show_this_pic)
-            weather_refresh = time.monotonic()
-            image = create_weather_image(args.weatherfile,
-                                         display.width,
-                                         display.height,
-                                         show_in_out,
-                                         filenames[show_this_pic],
-                                         "yuuka" in filenames[show_this_pic])
-            #If image was not successfully made, lets try another time in a new loop
-            if not image:
+    try:
+        while True:
+            # only query the weather every 5 minutes (and on first run)
+            if (not weather_refresh) or (time.monotonic() - weather_refresh) > 300:
+                if randomize_every_update:
+                    show_this_pic = select_random_not_this(totalPics,show_this_pic)
+                weather_refresh = time.monotonic()
+                image = create_weather_image(args.weatherfile,
+                                             display.width,
+                                             display.height,
+                                             show_in_out,
+                                             filenames[show_this_pic],
+                                             "yuuka" in filenames[show_this_pic])
+                #If image was not successfully made, lets try another time in a new loop
+                if not image:
+                    weather_refresh = None
+                    continue
+                display.fill(Adafruit_EPD.WHITE)
+                display.image(image)
+                display.display()
+
+            #If button 1 is pressed, we want to change to change between
+            #indoor and outdoor information.
+            if not up_button.value:
+                if show_in_out==1:
+                    show_in_out = 2
+                else:
+                    show_in_out = 1
+                #After pushing button we want a refresh
                 weather_refresh = None
-                continue
-            display.fill(Adafruit_EPD.WHITE)
-            display.image(image)
-            display.display()
 
-        #If button 1 is pressed, we want to change to change between
-        #indoor and outdoor information.
-        if not up_button.value:
-            if show_in_out==1:
-                show_in_out = 2
-            else:
-                show_in_out = 1
-            #After pushing button we want a refresh
-            weather_refresh = None
+            #If button 2 is pressed, we want to change the pic randomly,
+            #but not to the same one as previously.
+            if not down_button.value:
+                if not randomize_every_update:
+                    show_this_pic = select_random_not_this(totalPics,show_this_pic)
+                #After pushing button we want a refresh
+                weather_refresh = None
 
-        #If button 2 is pressed, we want to change the pic randomly,
-        #but not to the same one as previously.
-        if not down_button.value:
-            if not randomize_every_update:
-                show_this_pic = select_random_not_this(totalPics,show_this_pic)
-            #After pushing button we want a refresh
-            weather_refresh = None
-
-        #In order to not overburden cpu
-        time.sleep(0.1)
-        #print("test",i,"button1:",up_button.value,"button2:",down_button.value)
-        #i+=1
-        if args.onetime:
-            break
+            #In order to not overburden cpu
+            time.sleep(0.1)
+            #print("test",i,"button1:",up_button.value,"button2:",down_button.value)
+            #i+=1
+            if args.onetime:
+                break
+    except KeyboardInterrupt:
+        print("\nInterrupted. Exiting program...")
 
