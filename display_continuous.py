@@ -22,7 +22,7 @@ import argparse
 
 #The job of this class is to keep track of button presses and give signal
 #when a decision of button presses has been made.
-class ListenButton:
+class ListenButtons:
     def __init__(self):
         self.time_at_press = None
         self.last_state1 = False
@@ -32,7 +32,7 @@ class ListenButton:
         self.reset = False
         self.resetting_time = 2
 
-    def set_resetting_time(new_time):
+    def set_resetting_time(self,new_time):
         self.resetting_time=2
         return
 
@@ -63,7 +63,7 @@ class ListenButton:
         if self.time_at_press and time.monotonic()-self.time_at_press > self.resetting_time:
             self.reset=True
             return True
-        print(self.n1,self.n2)
+        #print(self.n1,self.n2)
         return False
 
 
@@ -235,6 +235,8 @@ if __name__ == "__main__":
     #Find all black and whit (bw) pics in the picture folder and list them.
     #"yuuka" picture is the default one.
     for (dirpath, dirnames, fnames) in walk(args.picfolder):
+        #Nice to have the files in alphabetical order
+        fnames = sorted(fnames)
         for fname in fnames:
             if "bw" in fname:
                 filenames.append(path.join(dirpath,fname))
@@ -258,13 +260,15 @@ if __name__ == "__main__":
     else:
         show_this_pic = defPic
     randomize_every_update = args.rand
+    override_randomizer = False
     down_button_pressed = False
-    listener = ListenButton()
+    listener = ListenButtons()
+    listener.set_resetting_time(1)
     try:
         while True:
             # only query the weather every 5 minutes (and on first run)
             if (not weather_refresh) or (time.monotonic() - weather_refresh) > 300:
-                if randomize_every_update:
+                if randomize_every_update and not override_randomizer:
                     show_this_pic = select_random_not_this(totalPics,show_this_pic)
                 weather_refresh = time.monotonic()
                 image = create_weather_image(args.weatherfile,
@@ -281,6 +285,7 @@ if __name__ == "__main__":
                 display.image(image)
                 display.display()
 
+            override_randomizer = False
             if listener.check_button_state(up_button.value,down_button.value):
                 if listener.n1>0:
                     if show_in_out==1:
@@ -288,7 +293,10 @@ if __name__ == "__main__":
                     else:
                         show_in_out = 1
                     weather_refresh=None
+                #We can decide the wanted pic by the number of presses
                 if listener.n2>0:
+                    show_this_pic = (listener.n2-1)%totalPics
+                    override_randomizer = True
                     weather_refresh=None
 
             #In order to not overburden cpu
