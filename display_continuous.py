@@ -20,6 +20,53 @@ from os import path
 from numpy import random
 import argparse
 
+#The job of this class is to keep track of button presses and give signal
+#when a decision of button presses has been made.
+class ListenButton:
+    def __init__(self):
+        self.time_at_press = None
+        self.last_state1 = False
+        self.last_state2 = False
+        self.n1 = 0
+        self.n2 = 0
+        self.reset = False
+        self.resetting_time = 2
+
+    def set_resetting_time(new_time):
+        self.resetting_time=2
+        return
+
+    #Return true if buttons were pressed and a decision of press has been made.
+    #Return false if no buttons pressed, or the listening time of button presses
+    #has not yet ended.
+    def check_button_state(self,button1,button2):
+        #We want to do reset only in the next loop as otherwise we lose the
+        #number of presses.
+        if self.reset:
+            self.n1=0
+            self.n2=0
+            self.time_at_press = None
+            self.reset=False
+        #up_button.value gives False if pressed
+        button1_was_pressed = not button1
+        button2_was_pressed = not button2
+        if button1_was_pressed or button2_was_pressed:
+            #We do not want a long press to count as multiple presses
+            if self.last_state1!=button1_was_pressed and button1_was_pressed:
+                self.time_at_press = time.monotonic()
+                self.n1+=1
+            if self.last_state2!=button2_was_pressed and button2_was_pressed:
+                self.time_at_press = time.monotonic()
+                self.n2+=1
+        self.last_state1 = button1_was_pressed
+        self.last_state2 = button2_was_pressed
+        if self.time_at_press and time.monotonic()-self.time_at_press > self.resetting_time:
+            self.reset=True
+            return True
+        print(self.n1,self.n2)
+        return False
+
+
 #This function is used to create the Image object shown in the screen
 def create_weather_image(filename_weather,width, height, show_in_out, filename_pic, flip_pic=True):
     #Define fonts
@@ -212,6 +259,7 @@ if __name__ == "__main__":
         show_this_pic = defPic
     randomize_every_update = args.rand
     down_button_pressed = False
+    listener = ListenButton()
     try:
         while True:
             # only query the weather every 5 minutes (and on first run)
@@ -233,26 +281,18 @@ if __name__ == "__main__":
                 display.image(image)
                 display.display()
 
-            #If button 1 is pressed, we want to change to change between
-            #indoor and outdoor information.
-            if not up_button.value:
-                if show_in_out==1:
-                    show_in_out = 2
-                else:
-                    show_in_out = 1
-                #After pushing button we want a refresh
-                weather_refresh = None
-
-            #If button 2 is pressed, we want to change the pic randomly,
-            #but not to the same one as previously.
-            if not down_button.value:
-                if not randomize_every_update:
-                    show_this_pic = select_random_not_this(totalPics,show_this_pic)
-                #After pushing button we want a refresh
-                weather_refresh = None
+            if listener.check_button_state(up_button.value,down_button.value):
+                if listener.n1>0:
+                    if show_in_out==1:
+                        show_in_out = 2
+                    else:
+                        show_in_out = 1
+                    weather_refresh=None
+                if listener.n2>0:
+                    weather_refresh=None
 
             #In order to not overburden cpu
-            time.sleep(0.1)
+            time.sleep(0.05)
             #print("test",i,"button1:",up_button.value,"button2:",down_button.value)
             #i+=1
             if args.onetime:
