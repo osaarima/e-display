@@ -19,6 +19,9 @@ from os import walk
 from os import path
 from numpy import random
 import argparse
+from urllib.request import urlopen
+import re
+from datetime import datetime
 
 #The job of this class is to keep track of button presses and give signal
 #when a decision of button presses has been made.
@@ -50,14 +53,13 @@ class ListenButtons:
         #up_button.value gives False if pressed
         button1_was_pressed = not button1
         button2_was_pressed = not button2
-        if button1_was_pressed or button2_was_pressed:
-            #We do not want a long press to count as multiple presses
-            if self.last_state1!=button1_was_pressed and button1_was_pressed:
-                self.time_at_press = time.monotonic()
-                self.n1+=1
-            if self.last_state2!=button2_was_pressed and button2_was_pressed:
-                self.time_at_press = time.monotonic()
-                self.n2+=1
+        #We do not want a long press to count as multiple presses
+        if self.last_state1!=button1_was_pressed and button1_was_pressed:
+            self.time_at_press = time.monotonic()
+            self.n1+=1
+        if self.last_state2!=button2_was_pressed and button2_was_pressed:
+            self.time_at_press = time.monotonic()
+            self.n2+=1
         self.last_state1 = button1_was_pressed
         self.last_state2 = button2_was_pressed
         if self.time_at_press and time.monotonic()-self.time_at_press > self.resetting_time:
@@ -172,6 +174,47 @@ def create_weather_image(filename_weather,width, height, show_in_out, filename_p
 
     return image
 
+#Finds and returns the length of day, sunrise, and sundown for Jyväskylä from
+#the timeanddate.com wep page.
+def find_sun_info():
+    currTime = str(datetime.now().date()).split('-')
+    strYear = currTime[0]
+    intMonth = int(currTime[1])
+    intDate  = int(currTime[2])
+    url = "https://www.timeanddate.com/sun/finland/jyvaskyla?month="+str(intMonth)+"&year="+strYear
+    try:
+        with urlopen(url) as page:
+            #for line in page:
+            #    print(line)
+            html_bytes = page.read()
+            html = html_bytes.decode("utf-8")
+            #print(html)
+            date_pattern = "data-day={}.*?data-day={}".format(intDate,intDate+1)
+            date_result = re.findall(date_pattern, html, re.IGNORECASE)[0]
+            #print(date_result)
+
+            time_pattern = "<td class=\"c tr sep-l\".*?>.*?</td.*?>"
+            match_results = re.findall(time_pattern, date_result, re.IGNORECASE)
+            length_of_day = re.sub("<.*?>", "", match_results[0]) #Remove < ... >
+            length_of_day = re.sub("\s*?", "", length_of_day) #Remove whitespace
+            #print(length_of_day)
+            time_pattern = "<td class=\"c sep\".*?>.*?</td.*?>"
+            match_results = re.findall(time_pattern, date_result, re.IGNORECASE)
+            sunrise = re.sub("span.*?span", "", match_results[0]) #Remove extra info
+            sunrise = re.sub("<.*?>", "", sunrise)
+            sunrise = re.sub("\s*?", "", sunrise)
+            #print(sunrise)
+            time_pattern = "<td class=\"sep c\".*?>.*?</td.*?>"
+            match_results = re.findall(time_pattern, date_result, re.IGNORECASE)
+            sundown = re.sub("span.*?span", "", match_results[0])
+            sundown = re.sub("<.*?>", "", sundown)
+            sundown = re.sub("\s*?", "", sundown)
+            #print(sundown)
+            return (length_of_day, sunrise, sundown)
+    except OSError as er:
+        print("Error:",er)
+        exit()
+
 def select_random_not_this(max_plus_one, not_this_one):
     while True:
         ranPic = random.randint(0,max_plus_one)
@@ -221,6 +264,8 @@ if __name__ == "__main__":
     up_button.switch_to_input()
     down_button = digitalio.DigitalInOut(board.D5)
     down_button.switch_to_input()
+
+    #print(find_sun_info())
 
     # Initialize the Display
     display = Adafruit_SSD1680(     # Newer eInk Bonnet
