@@ -184,36 +184,90 @@ def find_sun_info():
     url = "https://www.timeanddate.com/sun/finland/jyvaskyla?month="+str(intMonth)+"&year="+strYear
     try:
         with urlopen(url) as page:
-            #for line in page:
-            #    print(line)
             html_bytes = page.read()
             html = html_bytes.decode("utf-8")
-            #print(html)
             date_pattern = "data-day={}.*?data-day={}".format(intDate,intDate+1)
             date_result = re.findall(date_pattern, html, re.IGNORECASE)[0]
-            #print(date_result)
 
             time_pattern = "<td class=\"c tr sep-l\".*?>.*?</td.*?>"
             match_results = re.findall(time_pattern, date_result, re.IGNORECASE)
             length_of_day = re.sub("<.*?>", "", match_results[0]) #Remove < ... >
             length_of_day = re.sub("\s*?", "", length_of_day) #Remove whitespace
-            #print(length_of_day)
+
             time_pattern = "<td class=\"c sep\".*?>.*?</td.*?>"
             match_results = re.findall(time_pattern, date_result, re.IGNORECASE)
             sunrise = re.sub("span.*?span", "", match_results[0]) #Remove extra info
             sunrise = re.sub("<.*?>", "", sunrise)
             sunrise = re.sub("\s*?", "", sunrise)
-            #print(sunrise)
+
             time_pattern = "<td class=\"sep c\".*?>.*?</td.*?>"
             match_results = re.findall(time_pattern, date_result, re.IGNORECASE)
             sundown = re.sub("span.*?span", "", match_results[0])
             sundown = re.sub("<.*?>", "", sundown)
             sundown = re.sub("\s*?", "", sundown)
-            #print(sundown)
+
             return (length_of_day, sunrise, sundown)
     except OSError as er:
         print("Error:",er)
         exit()
+
+#This function is used to create the Image object shown in the screen
+def create_sun_image(width, height):
+    #Define fonts
+    boldSize=26
+    bold_font = ImageFont.truetype(
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", boldSize
+    )
+    smolSize=20
+    smol_font = ImageFont.truetype(
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", smolSize
+    )
+
+    image = Image.new("RGB", (width, height), color=WHITE)
+    draw = ImageDraw.Draw(image)
+
+    (daylen, sunrise, sundown) = find_sun_info()
+    daylenSplit = daylen.split(':')
+    daylenStr = daylenSplit[0]+':'+daylenSplit[1]#+' min'
+
+    printText1  = "Nousu"
+    printText2  = "Kesto"
+    printText3  = "Lasku"
+    printTime1  = "{}".format(sunrise)
+    printTime2  = "{}".format(daylenStr)
+    printTime3  = "{}".format(sundown)
+    
+    #Drawing text and numbers so that they are aligned left, center, and right
+    draw.text((5,3), printText1, font=smol_font, fill=BLACK,)
+    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printText2, font=smol_font)
+    draw.text((width/2.0-bbRight/2.0,3), printText2, font=smol_font, fill=BLACK,)
+    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printText3, font=smol_font)
+    draw.text((width-bbRight,3), printText3, font=smol_font, fill=BLACK,)
+
+    draw.text((5,3+smolSize+5), printTime1, font=smol_font, fill=BLACK,)
+    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printTime2, font=smol_font)
+    draw.text((width/2.0-bbRight/2.0,3+smolSize+5), printTime2, font=smol_font, fill=BLACK,)
+    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printTime3, font=smol_font)
+    draw.text((width-bbRight,3+smolSize+5), printTime3, font=smol_font, fill=BLACK,)
+
+    draw.ellipse((width/6.0, height/2.0, width-width/6.0, height+height/2.0), fill=None, outline=BLACK, width=3)
+    draw.line((width/6.0, height-2, width-width/6.0, height-2), fill=BLACK, width=3)
+
+    #Lets draw a pieslice showing visually the length of day. Black slice means no sun, white is daylight.
+    day_in_minutes = 24*60
+    sunrise_split = sunrise.split('.')
+    sunrise_in_minutes = int(sunrise_split[0])*60 + int(sunrise_split[1])
+    sundown_split = sundown.split('.')
+    sundown_in_minutes = int(sundown_split[0])*60 + int(sundown_split[1])
+
+    ratio_sunrise = sunrise_in_minutes/day_in_minutes
+    ratio_sundown = sundown_in_minutes/day_in_minutes
+
+    draw.pieslice((width/6.0, height/2.0, width-width/6.0, height+height/2.0), -180,  -180+180*ratio_sunrise, fill=BLACK, outline=BLACK, width=3)
+    draw.pieslice((width/6.0, height/2.0, width-width/6.0, height+height/2.0), -180+180*ratio_sundown, 0, fill=BLACK, outline=BLACK, width=3)
+
+    return image
+
 
 def select_random_not_this(max_plus_one, not_this_one):
     while True:
@@ -221,6 +275,15 @@ def select_random_not_this(max_plus_one, not_this_one):
         if ranPic!=not_this_one:
             break
     return ranPic
+
+def show_image(display,image):
+    if not image:
+        print("Error: No image produced which should be shown, exiting...")
+        exit()
+    display.fill(Adafruit_EPD.WHITE)
+    display.image(image)
+    display.display()
+    return
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="This displays the weather information measured by readRuuvi.py in an Raspberry pi e-ink display. The display is updated every five minutes starting from the time the program is first run. The first button changes between inside and outside weather information, and the second button refreshes the screen, starting the five minute timer from the beginning.",
@@ -323,21 +386,23 @@ if __name__ == "__main__":
                                              filenames[show_this_pic],
                                              "yuuka" in filenames[show_this_pic])
                 #If image was not successfully made, lets try another time in a new loop
-                if not image:
-                    weather_refresh = None
-                    continue
-                display.fill(Adafruit_EPD.WHITE)
-                display.image(image)
-                display.display()
+                show_image(display,image)
+
+            if args.onetime:
+                break
 
             override_randomizer = False
             if listener.check_button_state(up_button.value,down_button.value):
                 if listener.n1>0:
-                    if show_in_out==1:
-                        show_in_out = 2
+                    if listener.n1==2 and listener.n2==0:
+                        image = create_sun_image(display.width,display.height)
+                        show_image(display,image)
                     else:
-                        show_in_out = 1
-                    weather_refresh=None
+                        if show_in_out==1:
+                            show_in_out = 2
+                        else:
+                            show_in_out = 1
+                        weather_refresh=None
                 #We can decide the wanted pic by the number of presses
                 if listener.n2>0:
                     show_this_pic = (listener.n2-1)%totalPics
@@ -348,8 +413,6 @@ if __name__ == "__main__":
             time.sleep(0.05)
             #print("test",i,"button1:",up_button.value,"button2:",down_button.value)
             #i+=1
-            if args.onetime:
-                break
     except KeyboardInterrupt:
         print("\nInterrupted. Exiting program...")
 
