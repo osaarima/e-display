@@ -263,8 +263,8 @@ def create_sun_image(width, height):
     ratio_sunrise = sunrise_in_minutes/day_in_minutes
     ratio_sundown = sundown_in_minutes/day_in_minutes
 
-    draw.pieslice((width/6.0, height/2.0, width-width/6.0, height+height/2.0), -180,  -180+180*ratio_sunrise, fill=BLACK, outline=BLACK, width=3)
-    draw.pieslice((width/6.0, height/2.0, width-width/6.0, height+height/2.0), -180+180*ratio_sundown, 0, fill=BLACK, outline=BLACK, width=3)
+    #Let's draw pieslice on top of the ellipse (needs to have same coordinates. Angles define the darkness.
+    draw.pieslice((width/6.0, height/2.0, width-width/6.0, height+height/2.0), -180+180*ratio_sundown, -180+180*ratio_sunrise, fill=BLACK, outline=BLACK, width=3)
 
     return image
 
