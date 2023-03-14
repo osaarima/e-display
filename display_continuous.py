@@ -174,20 +174,37 @@ def create_weather_image(filename_weather,width, height, show_in_out, filename_p
 
     return image
 
-#Finds and returns the length of day, sunrise, and sundown for Jyväskylä from
-#the timeanddate.com wep page.
-def find_sun_info():
-    currTime = str(datetime.now().date()).split('-')
-    strYear = currTime[0]
-    intMonth = int(currTime[1])
-    intDate  = int(currTime[2])
-    url = "https://www.timeanddate.com/sun/finland/jyvaskyla?month="+str(intMonth)+"&year="+strYear
+#Finds and returns the length of day, sunrise, and sundown for a given city
+#either from the timeanddate.com wep page or by argument. If there is a nightless
+#night, returns ("nightless","nightless","nightless"), or if there is a sunless
+#day, returns ("sunless","sunless","sunless"). In case of failure returns ("","","")
+def find_sun_info(country_name, city_name, pre_year=-1, pre_month=-1, pre_date=-1):
+    if pre_year==-1 and pre_month==-1 and pre_date==-1:
+        currTime = str(datetime.now().date()).split('-')
+        strYear = currTime[0]
+        intMonth = int(currTime[1])
+        intDate  = int(currTime[2])
+    else:
+        strYear = str(pre_year)
+        intMonth = pre_month
+        intDate = pre_date
+    url = "https://www.timeanddate.com/sun/{}/{}?month={}&year={}".format(country_name,city_name,str(intMonth),strYear)
     try:
         with urlopen(url) as page:
             html_bytes = page.read()
             html = html_bytes.decode("utf-8")
             date_pattern = "data-day={}.*?data-day={}".format(intDate,intDate+1)
             date_result = re.findall(date_pattern, html, re.IGNORECASE)[0]
+
+            #Let's first check if there is sun up or down at all.
+            nightless_night_pattern = "Up all day"
+            match_results = re.findall(nightless_night_pattern, date_result, re.IGNORECASE)
+            if len(match_results)>0:
+                return ("nightless","nightless","nightless")
+            sunless_day_pattern = "Down all day"
+            match_results = re.findall(sunless_day_pattern, date_result, re.IGNORECASE)
+            if len(match_results)>0:
+                return ("sunless","sunless","sunless")
 
             time_pattern = "<td class=\"c tr sep-l\".*?>.*?</td.*?>"
             match_results = re.findall(time_pattern, date_result, re.IGNORECASE)
@@ -206,13 +223,18 @@ def find_sun_info():
             sundown = re.sub("<.*?>", "", sundown)
             sundown = re.sub("\s*?", "", sundown)
 
+            #The timeanddate.com will return only '-' in case sundown
+            #happens exactly at midnight.
+            if sundown=='-':
+                sundown='00.00'
+
             return (length_of_day, sunrise, sundown)
     except OSError as er:
-        print("Error:",er)
-        exit()
+        print("Error:",er,url)
+        return ("","","")
 
 #This function is used to create the Image object shown in the screen
-def create_sun_image(width, height):
+def create_sun_image(width, height, country_name, city_name):
     #Define fonts
     boldSize=26
     bold_font = ImageFont.truetype(
@@ -226,9 +248,36 @@ def create_sun_image(width, height):
     image = Image.new("RGB", (width, height), color=WHITE)
     draw = ImageDraw.Draw(image)
 
-    (daylen, sunrise, sundown) = find_sun_info()
-    daylenSplit = daylen.split(':')
-    daylenStr = daylenSplit[0]+':'+daylenSplit[1]#+' min'
+    (daylen, sunrise, sundown) = find_sun_info(country_name,city_name)
+    daylen_split = daylen.split(':')
+
+    #In case of nightless night or sunless day:
+    if sunrise=="nightless":
+        draw.text((5,3),"Tänään on yötön yö :o", font=smol_font, fill=BLACK)
+        draw.ellipse((width/6.0, height/2.0, width-width/6.0, height+height/2.0), fill=None, outline=BLACK, width=3)
+        draw.line((width/6.0, height-2, width-width/6.0, height-2), fill=BLACK, width=3)
+        return image
+    if sunrise=="sunless":
+        draw.text((5,3),"Tänään on kaamos :o", font=smol_font, fill=BLACK)
+        draw.ellipse((width/6.0, height/2.0, width-width/6.0, height+height/2.0), fill=BLACK, outline=BLACK, width=3)
+        return image
+
+    #In case of failure:
+    if daylen_split[0]=="" or daylen_split[1]=="" or daylen_split[2]=="":
+        draw.text((5,3),"Aurinkotietojen\nhakeminen\nepäonnistui\n:(", font=smol_font, fill=BLACK)
+        return image
+
+    daylen_hours=int(daylen_split[0])
+    daylen_mins=int(daylen_split[1])
+    daylen_secs=int(daylen_split[2])
+
+    #Let's round the seconds up in case s>=30
+    if daylen_secs>=30:
+        daylen_mins+=1
+        if daylen_mins==60:
+            daylen_mins=0
+            daylen_hours+=1
+    daylenStr = "{}:{:02d}".format(daylen_hours,daylen_mins)
 
     printText1  = "Nousu"
     printText2  = "Kesto"
@@ -328,7 +377,7 @@ if __name__ == "__main__":
     down_button = digitalio.DigitalInOut(board.D5)
     down_button.switch_to_input()
 
-    #print(find_sun_info())
+    #print(find_sun_info("finland","sodankyla",2023,5,24))
 
     # Initialize the Display
     display = Adafruit_SSD1680(     # Newer eInk Bonnet
@@ -395,7 +444,7 @@ if __name__ == "__main__":
             if listener.check_button_state(up_button.value,down_button.value):
                 if listener.n1>0:
                     if listener.n1==2 and listener.n2==0:
-                        image = create_sun_image(display.width,display.height)
+                        image = create_sun_image(display.width,display.height,"finland","jyvaskyla")
                         show_image(display,image)
                     else:
                         if show_in_out==1:
