@@ -317,6 +317,44 @@ def create_sun_image(width, height, country_name, city_name):
 
     return image
 
+def sakarin_villapaitapeli_mini(display,up_but,down_but):
+    with Image.open("pics/sakari/peli1.png").convert("RGB") as skr_img:
+        show_image(display,skr_img)
+    gamestate=0
+    try:
+        while True:
+            if gamestate==0:
+                if not up_but.value or not down_but.value:
+                    with Image.open("pics/sakari/peli2.png").convert("RGB") as skr_img:
+                        show_image(display,skr_img)
+                    gamestate=1
+            if gamestate==1:
+                if not up_but.value:
+                    with Image.open("pics/sakari/peli3-voitit.png").convert("RGB") as skr_img:
+                        show_image(display,skr_img)
+                    time.sleep(0.5)
+                    with Image.open("pics/sakari/peli3-voitit2.png").convert("RGB") as skr_img:
+                        show_image(display,skr_img)
+                    gamestate=11
+                if not down_but.value:
+                    with Image.open("pics/sakari/peli3-havisit.png").convert("RGB") as skr_img:
+                        show_image(display,skr_img)
+                    time.sleep(0.5)
+                    with Image.open("pics/sakari/peli3-havisit2.png").convert("RGB") as skr_img:
+                        show_image(display,skr_img)
+                    gamestate=11
+            if gamestate==11:
+                if not up_but.value:
+                    with Image.open("pics/sakari/peli1.png").convert("RGB") as skr_img:
+                        show_image(display,skr_img)
+                    gamestate=0
+                if not down_but.value:
+                    return
+
+            time.sleep(0.05)
+    except KeyboardInterrupt:
+        print("\nInterrupted. Exiting program...")
+    return
 
 def select_random_not_this(max_plus_one, not_this_one):
     while True:
@@ -442,8 +480,8 @@ if __name__ == "__main__":
 
             override_randomizer = False
             if listener.check_button_state(up_button.value,down_button.value):
-                if listener.n1>0:
-                    if listener.n1==2 and listener.n2==0:
+                if listener.n1>0 and listener.n2==0:
+                    if listener.n1==2:
                         image = create_sun_image(display.width,display.height,"finland","jyvaskyla")
                         show_image(display,image)
                     else:
@@ -453,9 +491,13 @@ if __name__ == "__main__":
                             show_in_out = 1
                         weather_refresh=None
                 #We can decide the wanted pic by the number of presses
-                if listener.n2>0:
+                if listener.n2>0 and listener.n1==0:
                     show_this_pic = (listener.n2-1)%totalPics
                     override_randomizer = True
+                    weather_refresh=None
+                
+                if listener.n1==3 and listener.n2==3:
+                    sakarin_villapaitapeli_mini(display,up_button,down_button)
                     weather_refresh=None
 
             #In order to not overburden cpu
