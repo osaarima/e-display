@@ -1,11 +1,18 @@
 
-def get_weather_data(filename, devicename, days):
+def get_weather_data(filename, devicename, days, skip_lines=0):
+    import numpy as np
+    #import time
+
+    #timing1 = time.perf_counter()
     with open(filename, 'r', encoding="utf-8") as fil:
-        time = []
+        meas_time = []
         temp = []
         humidi = []
         pressure = []
         yLab = []
+        lines=0
+        nowTime = np.datetime64('now')
+        timeDelta = np.timedelta64(days,'D')
         for count, line in enumerate(fil):
             splitter = line.split(',')
             if count==0:
@@ -24,21 +31,31 @@ def get_weather_data(filename, devicename, days):
                 yLab.append(splitter[4][:brac_ind] +' [k'+ splitter[4][brac_ind+1:]) 
                 pass
             else:
+                if count<skip_lines:
+                    continue
                 timeFor = "{}T{}".format(splitter[0],splitter[1])
                 npTime = np.datetime64(timeFor)
-                nowTime = np.datetime64('now')
                 #We want to print only the latest --days days
-                if nowTime-npTime < np.timedelta64(days,'D'):
-                    time.append(npTime)
+                if nowTime-npTime < timeDelta:
+                    meas_time.append(npTime)
                     temp.append(float(splitter[devInd*4+2+1]))
                     humidi.append(float(splitter[devInd*4+2+0]))
                     pressure.append(float(splitter[devInd*4+2+2])/1000.0)
-    return (time, temp, humidi, pressure, xLab, yLab)
+            lines=count
+    #timing2 = time.perf_counter()
+    #print("Reading took: ", timing2-timing1, "seconds")
+
+    #Check that if we skipped too many lines, we read the whole file
+    #so that we get some data
+    if skip_lines!=0 and len(meas_time)==0:
+        print("Too many lines skipped in get_weather_data! Reading the whole file again")
+        return get_weather_data(filename,devicename,days,0)
+    else:
+        return (meas_time, temp, humidi, pressure, xLab, yLab, lines)
 
 if __name__ == "__main__":
     import argparse
     import subprocess
-    import numpy as np
     import matplotlib.pyplot as plt
     import matplotlib.dates as mplDates
     import matplotlib as mpl
@@ -79,13 +96,12 @@ if __name__ == "__main__":
     yLab = []
     xLab = None
 
-    (time, temp, humidi, pressure, xLab, yLab) = get_weather_data(args.file, args.device, args.days)
+    (time, temp, humidi, pressure, xLab, yLab, lines) = get_weather_data(args.file, args.device, args.days)
 
     if len(time)==0:
         print("No data found, exiting...")
         exit()
     
-
     plots_num = 3
 
     fig, ax = plt.subplots(plots_num,1,figsize=(8,10))

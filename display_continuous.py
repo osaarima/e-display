@@ -22,6 +22,7 @@ import argparse
 from urllib.request import urlopen
 import re
 from datetime import datetime
+import drawWeather
 
 #The job of this class is to keep track of button presses and give signal
 #when a decision of button presses has been made.
@@ -34,6 +35,7 @@ class ListenButtons:
         self.n2 = 0
         self.reset = False
         self.resetting_time = 2
+
 
     def set_resetting_time(self,new_time):
         self.resetting_time=2
@@ -70,109 +72,220 @@ class ListenButtons:
 
 
 #This function is used to create the Image object shown in the screen
-def create_weather_image(filename_weather,width, height, show_in_out, filename_pic, flip_pic=True):
-    #Define fonts
-    boldSize=26
-    bold_font = ImageFont.truetype(
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", boldSize
-    )
-    smolSize=20
-    smol_font = ImageFont.truetype(
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", smolSize
-    )
+class WeatherImageManipulations:
+    def __init__(self,l_filename_weather,l_devIn,l_devOut,l_width,l_height):
+        self.filename_weather=l_filename_weather
+        self.deviceIn=l_devIn
+        self.deviceOut=l_devOut
+        self.width=l_width
+        self.height=l_height
+        self.show_in_out=1
+        self.skip_lines=0
+        self.show_days_graph=1
+        self.boldSize=26
+        self.bold_font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", self.boldSize
+        )
+        self.smolSize=20
+        self.smol_font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", self.smolSize
+        )
 
-    image = Image.new("RGB", (width, height), color=WHITE)
-    #print(display.width, display.height) #250 122
-    draw = ImageDraw.Draw(image)
-
-    #timing1 = time.perf_counter()
-    try:
-        with open(filename_weather, 'r', encoding="utf-8") as fil:
-            #raise OSError(1, "testing the exception")
-            if show_in_out==1:
-                humi_ind = 2
-                temp_ind = 3
-            elif show_in_out==2:
-                humi_ind = 6
-                temp_ind = 7
-            for num,line in enumerate(fil):
-                if num==0:
-                    continue
-                splitted = line.split(',')
-                #date = splitted[0]
-                savedTime = splitted[1]
-                savedHumi = splitted[humi_ind]
-                savedTemp = splitted[temp_ind]
-    except OSError as err:
-        print("File is in use (most likely), trying again in a couple of seconds. Message: ", err)
-        time.sleep(5)
-        return None
-    #timing2 = time.perf_counter()
-    #print("Reading took: ", timing2-timing1, "seconds")
-
-    #Then comes the text
-    if show_in_out==1:
-        printTitle = "Ulko"
-    elif show_in_out==2:
-        printTitle = "Sisä"
-    printTime  = "{}".format(savedTime)
-    printData  = "{} °C\n{} %".format(savedTemp, savedHumi)
-    yCoord = 3
-    draw.text((5,yCoord), printTitle, font=bold_font, fill=BLACK,)
-    yCoord+=boldSize+3
-    draw.text((5,yCoord), printTime, font=smol_font, fill=BLACK,)
-    yCoord+=smolSize+6
-    draw.text((5,yCoord), printData, font=bold_font, fill=BLACK,)
-
-    #This only checks the box where said text will fit
-    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((5,yCoord), printData, font=bold_font)
-
-    with Image.open(filename_pic).convert("RGB") as paste_img:
-        #Can I get automatic contrast/brightness enhancement working?
-        #enhance_color = ImageEnhance.Color(paste_img)
-        #paste_img = enhance_color.enhance(0.0)
-        #enhance_contrast = ImageEnhance.Contrast(paste_img)
-        #paste_img = enhance_contrast.enhance(0.5)
-        #enhance_brightness = ImageEnhance.Brightness(paste_img)
-        #paste_img = enhance_brightness.enhance(0.95)
-
-        resize_lim_h = height #90
-        resize_lim_w = width-bbRight
-        resize_x1 = paste_img.size[0]
-        resize_y1 = paste_img.size[1]
-        resize_x2 = paste_img.size[0]
-        resize_y2 = paste_img.size[1]
-        #Test which restriction (x or y) is creating the smaller image and scale with that
-        if resize_y1>resize_lim_h:
-            resize_x1 = round(paste_img.size[0]*resize_lim_h/paste_img.size[1])
-            resize_y1 = resize_lim_h
-        if resize_x2>resize_lim_w:
-            resize_x2 = resize_lim_w
-            resize_y2 = round(paste_img.size[1]*resize_lim_w/paste_img.size[0])
-        if resize_y1<resize_y2:
-            paste_img=paste_img.resize((resize_x1, resize_y1),resample=Image.LANCZOS, reducing_gap=3.0)
+    def switch_in_out(self):
+        if self.show_in_out==1:
+            self.show_in_out=2
         else:
-            paste_img=paste_img.resize((resize_x2, resize_y2),resample=Image.LANCZOS, reducing_gap=3.0)
+            self.show_in_out=1
 
-        if flip_pic:
-            paste_img=paste_img.transpose(method=Image.FLIP_LEFT_RIGHT)
+    def set_skip_lines(self,new_skip):
+        self.skip_lines=new_skip
 
-        #If the image has space, let's center it in the available space.
-        #Otherwise it will be tightly fitted into the space.
-        if paste_img.size[0]!=resize_lim_w:
-            paste_l_pos = round((width+bbRight)/2 - paste_img.size[0]/2)
+    def create_weather_image(self, filename_pic, flip_pic=True):
+        #Define fonts
+
+        if self.show_in_out==1:
+            deviceNow=self.deviceOut
+            printTitle = "Ulko"
         else:
-            paste_l_pos = width-paste_img.size[0]
-        if paste_img.size[1]!=resize_lim_h:
-            paste_t_pos = round(height/2 - paste_img.size[1]/2)
-        else:
-            paste_t_pos = height-paste_img.size[1]
-        image.paste(paste_img, box=(paste_l_pos,paste_t_pos), mask=None)
+            deviceNow=self.deviceIn
+            printTitle = "Sisä"
 
-    #draw.line((bbRight,0,bbRight,height), fill=BLACK,)
-    #print(width-bbRight)
+        image = Image.new("RGB", (self.width, self.height), color=WHITE)
+        draw = ImageDraw.Draw(image)
 
-    return image
+        meas_time = []
+        temp = []
+        humidi = []
+        pressure = []
+        xLab = []
+        yLab = []
+        #timing1 = time.perf_counter()
+        try:
+            (meas_time,temp,humidi,pressure,xLab,yLab,lines) = drawWeather.get_weather_data(self.filename_weather,
+                                                               deviceNow, self.show_days_graph, self.skip_lines)
+            #We start by not skipping lines, but after that
+            #we know how many we need to skip in order to show
+            #all of the data we need. This will speed up the
+            #reading of the file significantly (~one magnitude)
+            self.set_skip_lines(lines-self.show_days_graph*24*60/5) #Next iteration we want to minimize the reading of the file.
+            leng = len(meas_time)
+            if leng==0:
+                print("No events to show")
+                return None
+            #We want to print the last values
+            savedTime = str(meas_time[leng-1]).split('T')[1]
+            savedHumi = humidi[leng-1]
+            savedTemp = temp[leng-1]
+        except OSError as err:
+            print("File is in use (most likely), trying again in a couple of seconds. Message: ", err)
+            time.sleep(5)
+            return None
+        #timing2 = time.perf_counter()
+        #print("Reading took: ", timing2-timing1, "seconds")
+
+        #Then comes the text
+        printTime  = "{}".format(savedTime)
+        printData  = "{} °C\n{} %".format(savedTemp, savedHumi)
+        yCoord = 3
+        draw.text((5,yCoord), printTitle, font=self.bold_font, fill=BLACK,)
+        yCoord+=self.boldSize+3
+        draw.text((5,yCoord), printTime, font=self.smol_font, fill=BLACK,)
+        yCoord+=self.smolSize+6
+        draw.text((5,yCoord), printData, font=self.bold_font, fill=BLACK,)
+
+        #This only checks the box where said text will fit
+        (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((5,yCoord), printData, font=self.bold_font)
+
+        with Image.open(filename_pic).convert("RGB") as paste_img:
+            #Can I get automatic contrast/brightness enhancement working?
+            #enhance_color = ImageEnhance.Color(paste_img)
+            #paste_img = enhance_color.enhance(0.0)
+            #enhance_contrast = ImageEnhance.Contrast(paste_img)
+            #paste_img = enhance_contrast.enhance(0.5)
+            #enhance_brightness = ImageEnhance.Brightness(paste_img)
+            #paste_img = enhance_brightness.enhance(0.95)
+
+            resize_lim_h = self.height #90
+            resize_lim_w = self.width-bbRight
+            resize_x1 = paste_img.size[0]
+            resize_y1 = paste_img.size[1]
+            resize_x2 = paste_img.size[0]
+            resize_y2 = paste_img.size[1]
+            #Test which restriction (x or y) is creating the smaller image and scale with that
+            if resize_y1>resize_lim_h:
+                resize_x1 = round(paste_img.size[0]*resize_lim_h/paste_img.size[1])
+                resize_y1 = resize_lim_h
+            if resize_x2>resize_lim_w:
+                resize_x2 = resize_lim_w
+                resize_y2 = round(paste_img.size[1]*resize_lim_w/paste_img.size[0])
+            if resize_y1<resize_y2:
+                paste_img=paste_img.resize((resize_x1, resize_y1),resample=Image.LANCZOS, reducing_gap=3.0)
+            else:
+                paste_img=paste_img.resize((resize_x2, resize_y2),resample=Image.LANCZOS, reducing_gap=3.0)
+
+            if flip_pic:
+                paste_img=paste_img.transpose(method=Image.FLIP_LEFT_RIGHT)
+
+            #If the image has space, let's center it in the available space.
+            #Otherwise it will be tightly fitted into the space.
+            if paste_img.size[0]!=resize_lim_w:
+                paste_l_pos = round((self.width+bbRight)/2 - paste_img.size[0]/2)
+            else:
+                paste_l_pos = self.width-paste_img.size[0]
+            if paste_img.size[1]!=resize_lim_h:
+                paste_t_pos = round(self.height/2 - paste_img.size[1]/2)
+            else:
+                paste_t_pos = self.height-paste_img.size[1]
+            image.paste(paste_img, box=(paste_l_pos,paste_t_pos), mask=None)
+
+        #draw.line((bbRight,0,bbRight,self.height), fill=BLACK,)
+        #print(self.width-bbRight)
+
+        return image
+
+    #This function is used to create the Image object shown in the screen
+    def create_sun_image(self,country_name, city_name):
+        #Define fonts
+        image = Image.new("RGB", (self.width, self.height), color=WHITE)
+        draw = ImageDraw.Draw(image)
+
+        (daylen, sunrise, sundown) = find_sun_info(country_name,city_name)
+        daylen_split = daylen.split(':')
+
+        #In case of nightless night or sunless day:
+        if sunrise=="nightless":
+            draw.text((5,3),"Tänään on yötön yö :o", font=self.smol_font, fill=BLACK)
+            draw.ellipse((self.width/6.0, self.height/2.0, self.width-self.width/6.0, self.height+self.height/2.0), 
+                          fill=None, outline=BLACK, width=3)
+            draw.line((self.width/6.0, self.height-2, self.width-self.width/6.0, self.height-2),
+                          fill=BLACK, width=3)
+            return image
+        if sunrise=="sunless":
+            draw.text((5,3),"Tänään on kaamos :o", font=self.smol_font, fill=BLACK)
+            draw.ellipse((self.width/6.0, self.height/2.0, self.width-self.width/6.0, self.height+self.height/2.0),
+                          fill=BLACK, outline=BLACK, width=3)
+            return image
+
+        #In case of failure:
+        if daylen_split[0]=="" or daylen_split[1]=="" or daylen_split[2]=="":
+            draw.text((5,3),"Aurinkotietojen\nhakeminen\nepäonnistui\n:(", font=self.smol_font, fill=BLACK)
+            return image
+
+        daylen_hours=int(daylen_split[0])
+        daylen_mins=int(daylen_split[1])
+        daylen_secs=int(daylen_split[2])
+
+        #Let's round the seconds up in case s>=30
+        if daylen_secs>=30:
+            daylen_mins+=1
+            if daylen_mins==60:
+                daylen_mins=0
+                daylen_hours+=1
+        daylenStr = "{}:{:02d}".format(daylen_hours,daylen_mins)
+
+        printText1  = "Nousu"
+        printText2  = "Kesto"
+        printText3  = "Lasku"
+        printTime1  = "{}".format(sunrise)
+        printTime2  = "{}".format(daylenStr)
+        printTime3  = "{}".format(sundown)
+        
+        #Drawing text and numbers so that they are aligned left, center, and right
+        draw.text((5,3), printText1, font=self.smol_font, fill=BLACK,)
+        (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printText2, font=self.smol_font)
+        draw.text((self.width/2.0-bbRight/2.0,3), printText2, font=self.smol_font, fill=BLACK,)
+        (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printText3, font=self.smol_font)
+        draw.text((self.width-bbRight,3), printText3, font=self.smol_font, fill=BLACK,)
+
+        draw.text((5,3+self.smolSize+5), printTime1, font=self.smol_font, fill=BLACK,)
+        (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printTime2, font=self.smol_font)
+        draw.text((self.width/2.0-bbRight/2.0,3+self.smolSize+5), printTime2, font=self.smol_font, fill=BLACK,)
+        (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printTime3, font=self.smol_font)
+        draw.text((self.width-bbRight,3+self.smolSize+5), printTime3, font=self.smol_font, fill=BLACK,)
+
+        draw.ellipse((self.width/6.0, self.height/2.0, self.width-self.width/6.0, self.height+self.height/2.0),
+                      fill=None, outline=BLACK, width=3)
+        draw.line((self.width/6.0, self.height-2, self.width-self.width/6.0, self.height-2),
+                   fill=BLACK, width=3)
+
+        #Lets draw a pieslice showing visually the length of day. Black slice means no sun, white is daylight.
+        day_in_minutes = 24*60
+        sunrise_split = sunrise.split('.')
+        sunrise_in_minutes = int(sunrise_split[0])*60 + int(sunrise_split[1])
+        sundown_split = sundown.split('.')
+        sundown_in_minutes = int(sundown_split[0])*60 + int(sundown_split[1])
+
+        ratio_sunrise = sunrise_in_minutes/day_in_minutes
+        ratio_sundown = sundown_in_minutes/day_in_minutes
+
+        #Let's draw pieslice on top of the ellipse (needs to have same coordinates. Angles define the darkness.
+        draw.pieslice((self.width/6.0, self.height/2.0, self.width-self.width/6.0, self.height+self.height/2.0),
+                       -180+180*ratio_sundown, -180+180*ratio_sunrise,
+                       fill=BLACK, outline=BLACK, width=3)
+
+        return image
+
+
 
 #Finds and returns the length of day, sunrise, and sundown for a given city
 #either from the timeanddate.com wep page or by argument. If there is a nightless
@@ -232,90 +345,6 @@ def find_sun_info(country_name, city_name, pre_year=-1, pre_month=-1, pre_date=-
     except OSError as er:
         print("Error:",er,url)
         return ("","","")
-
-#This function is used to create the Image object shown in the screen
-def create_sun_image(width, height, country_name, city_name):
-    #Define fonts
-    boldSize=26
-    bold_font = ImageFont.truetype(
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", boldSize
-    )
-    smolSize=20
-    smol_font = ImageFont.truetype(
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", smolSize
-    )
-
-    image = Image.new("RGB", (width, height), color=WHITE)
-    draw = ImageDraw.Draw(image)
-
-    (daylen, sunrise, sundown) = find_sun_info(country_name,city_name)
-    daylen_split = daylen.split(':')
-
-    #In case of nightless night or sunless day:
-    if sunrise=="nightless":
-        draw.text((5,3),"Tänään on yötön yö :o", font=smol_font, fill=BLACK)
-        draw.ellipse((width/6.0, height/2.0, width-width/6.0, height+height/2.0), fill=None, outline=BLACK, width=3)
-        draw.line((width/6.0, height-2, width-width/6.0, height-2), fill=BLACK, width=3)
-        return image
-    if sunrise=="sunless":
-        draw.text((5,3),"Tänään on kaamos :o", font=smol_font, fill=BLACK)
-        draw.ellipse((width/6.0, height/2.0, width-width/6.0, height+height/2.0), fill=BLACK, outline=BLACK, width=3)
-        return image
-
-    #In case of failure:
-    if daylen_split[0]=="" or daylen_split[1]=="" or daylen_split[2]=="":
-        draw.text((5,3),"Aurinkotietojen\nhakeminen\nepäonnistui\n:(", font=smol_font, fill=BLACK)
-        return image
-
-    daylen_hours=int(daylen_split[0])
-    daylen_mins=int(daylen_split[1])
-    daylen_secs=int(daylen_split[2])
-
-    #Let's round the seconds up in case s>=30
-    if daylen_secs>=30:
-        daylen_mins+=1
-        if daylen_mins==60:
-            daylen_mins=0
-            daylen_hours+=1
-    daylenStr = "{}:{:02d}".format(daylen_hours,daylen_mins)
-
-    printText1  = "Nousu"
-    printText2  = "Kesto"
-    printText3  = "Lasku"
-    printTime1  = "{}".format(sunrise)
-    printTime2  = "{}".format(daylenStr)
-    printTime3  = "{}".format(sundown)
-    
-    #Drawing text and numbers so that they are aligned left, center, and right
-    draw.text((5,3), printText1, font=smol_font, fill=BLACK,)
-    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printText2, font=smol_font)
-    draw.text((width/2.0-bbRight/2.0,3), printText2, font=smol_font, fill=BLACK,)
-    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printText3, font=smol_font)
-    draw.text((width-bbRight,3), printText3, font=smol_font, fill=BLACK,)
-
-    draw.text((5,3+smolSize+5), printTime1, font=smol_font, fill=BLACK,)
-    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printTime2, font=smol_font)
-    draw.text((width/2.0-bbRight/2.0,3+smolSize+5), printTime2, font=smol_font, fill=BLACK,)
-    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printTime3, font=smol_font)
-    draw.text((width-bbRight,3+smolSize+5), printTime3, font=smol_font, fill=BLACK,)
-
-    draw.ellipse((width/6.0, height/2.0, width-width/6.0, height+height/2.0), fill=None, outline=BLACK, width=3)
-    draw.line((width/6.0, height-2, width-width/6.0, height-2), fill=BLACK, width=3)
-
-    #Lets draw a pieslice showing visually the length of day. Black slice means no sun, white is daylight.
-    day_in_minutes = 24*60
-    sunrise_split = sunrise.split('.')
-    sunrise_in_minutes = int(sunrise_split[0])*60 + int(sunrise_split[1])
-    sundown_split = sundown.split('.')
-    sundown_in_minutes = int(sundown_split[0])*60 + int(sundown_split[1])
-
-    ratio_sunrise = sunrise_in_minutes/day_in_minutes
-    ratio_sundown = sundown_in_minutes/day_in_minutes
-
-    #Let's draw pieslice on top of the ellipse (needs to have same coordinates. Angles define the darkness.
-    draw.pieslice((width/6.0, height/2.0, width-width/6.0, height+height/2.0), -180+180*ratio_sundown, -180+180*ratio_sunrise, fill=BLACK, outline=BLACK, width=3)
-
-    return image
 
 def sakarin_villapaitapeli_mini(display,up_but,down_but):
     with Image.open("pics/sakari/peli1.png").convert("RGB") as skr_img:
@@ -457,6 +486,9 @@ if __name__ == "__main__":
     randomize_every_update = args.rand
     override_randomizer = False
     down_button_pressed = False
+    image_manip = WeatherImageManipulations(args.weatherfile,
+                  "e6:89:18:c1:32:1f", "fc:41:f4:c5:0c:08",
+                  display.width, display.height)
     listener = ListenButtons()
     listener.set_resetting_time(1)
     try:
@@ -466,12 +498,8 @@ if __name__ == "__main__":
                 if randomize_every_update and not override_randomizer:
                     show_this_pic = select_random_not_this(totalPics,show_this_pic)
                 weather_refresh = time.monotonic()
-                image = create_weather_image(args.weatherfile,
-                                             display.width,
-                                             display.height,
-                                             show_in_out,
-                                             filenames[show_this_pic],
-                                             "yuuka" in filenames[show_this_pic])
+                image = image_manip.create_weather_image(filenames[show_this_pic],
+                                                        "yuuka" in filenames[show_this_pic])
                 #If image was not successfully made, lets try another time in a new loop
                 show_image(display,image)
 
@@ -482,13 +510,10 @@ if __name__ == "__main__":
             if listener.check_button_state(up_button.value,down_button.value):
                 if listener.n1>0 and listener.n2==0:
                     if listener.n1==2:
-                        image = create_sun_image(display.width,display.height,"finland","jyvaskyla")
+                        image = image_manip.create_sun_image("finland","jyvaskyla")
                         show_image(display,image)
                     else:
-                        if show_in_out==1:
-                            show_in_out = 2
-                        else:
-                            show_in_out = 1
+                        image_manip.switch_in_out()
                         weather_refresh=None
                 #We can decide the wanted pic by the number of presses
                 if listener.n2>0 and listener.n1==0:
