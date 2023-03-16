@@ -1,4 +1,40 @@
 
+def get_weather_data(filename, devicename, days):
+    with open(filename, 'r', encoding="utf-8") as fil:
+        time = []
+        temp = []
+        humidi = []
+        pressure = []
+        yLab = []
+        for count, line in enumerate(fil):
+            splitter = line.split(',')
+            if count==0:
+                try:
+                    devInd = splitter.index(devicename)
+                except ValueError:
+                    devInd = splitter.index(devicename+'\n')
+            elif count==1:
+                xLab = "Time"
+                #Manipulate labels to be more pleasing.
+                brac_ind = splitter[3].find('[')
+                yLab.append(splitter[3][:brac_ind] +' [°'+ splitter[3][brac_ind+1:])
+                brac_ind = splitter[2].find('[')
+                yLab.append(splitter[2][:brac_ind] +' '+ splitter[2][brac_ind:])
+                brac_ind = splitter[4].find('[')
+                yLab.append(splitter[4][:brac_ind] +' [k'+ splitter[4][brac_ind+1:]) 
+                pass
+            else:
+                timeFor = "{}T{}".format(splitter[0],splitter[1])
+                npTime = np.datetime64(timeFor)
+                nowTime = np.datetime64('now')
+                #We want to print only the latest --days days
+                if nowTime-npTime < np.timedelta64(days,'D'):
+                    time.append(npTime)
+                    temp.append(float(splitter[devInd*4+2+1]))
+                    humidi.append(float(splitter[devInd*4+2+0]))
+                    pressure.append(float(splitter[devInd*4+2+2])/1000.0)
+    return (time, temp, humidi, pressure, xLab, yLab)
+
 if __name__ == "__main__":
     import argparse
     import subprocess
@@ -36,101 +72,78 @@ if __name__ == "__main__":
     if args.quiet:
         mpl.use('Agg') #Running without gui
 
-    with open(args.file, 'r', encoding="utf-8") as fil:
-        time = []
-        temp = []
-        humidi = []
-        pressure = []
-        yLab = []
-        for count, line in enumerate(fil):
-            splitter = line.split(',')
-            if count==0:
-                try:
-                    devInd = splitter.index(args.device)
-                except ValueError:
-                    devInd = splitter.index(args.device+'\n')
-            elif count==1:
-                xLab = "Time"
-                #Manipulate labels to be more pleasing.
-                brac_ind = splitter[3].find('[')
-                yLab.append(splitter[3][:brac_ind] +' [°'+ splitter[3][brac_ind+1:])
-                brac_ind = splitter[2].find('[')
-                yLab.append(splitter[2][:brac_ind] +' '+ splitter[2][brac_ind:])
-                brac_ind = splitter[4].find('[')
-                yLab.append(splitter[4][:brac_ind] +' [k'+ splitter[4][brac_ind+1:]) 
-                pass
-            else:
-                timeFor = "{}T{}".format(splitter[0],splitter[1])
-                npTime = np.datetime64(timeFor)
-                nowTime = np.datetime64('now')
-                #We want to print only the latest --days days
-                if nowTime-npTime < np.timedelta64(args.days,'D'):
-                    time.append(npTime)
-                    temp.append(float(splitter[devInd*4+2+1]))
-                    humidi.append(float(splitter[devInd*4+2+0]))
-                    pressure.append(float(splitter[devInd*4+2+2])/1000.0)
+    time = []
+    temp = []
+    humidi = []
+    pressure = []
+    yLab = []
+    xLab = None
 
-        #print(time)
-        #print(temp)
+    (time, temp, humidi, pressure, xLab, yLab) = get_weather_data(args.file, args.device, args.days)
 
-        plots_num = 3
+    if len(time)==0:
+        print("No data found, exiting...")
+        exit()
+    
 
-        fig, ax = plt.subplots(plots_num,1,figsize=(8,10))
-        if not args.defColor:
-            plot_color="white"
+    plots_num = 3
+
+    fig, ax = plt.subplots(plots_num,1,figsize=(8,10))
+    if not args.defColor:
+        plot_color="white"
+    else:
+        plot_color="black"
+    for ix in range(plots_num):
+        #ax[ix].set_title("Temp",color=plot_color)
+        if ix==plots_num-1:
+            ax[ix].set_xlabel(xLab,color=plot_color)
+        ax[ix].set_ylabel(yLab[ix],color=plot_color)
+        #ax[ix].set_facecolor(plot_color)
+        ax[ix].tick_params(labelcolor=plot_color)
+        ax[ix].tick_params(axis='x', colors=plot_color)
+        ax[ix].tick_params(axis='y', colors=plot_color)
+        ax[ix].spines['top'].set_color(plot_color)
+        ax[ix].spines['bottom'].set_color(plot_color)
+        ax[ix].spines['left'].set_color(plot_color)
+        ax[ix].spines['right'].set_color(plot_color)
+    ax[0].plot(time,temp)#,label=label1[num])
+
+    #Draw zero-line only if there are both neg and pos values
+    posVal=False
+    negVal=False
+    for iT in temp:
+        if iT<0:
+            negVal=True
         else:
-            plot_color="black"
-        for ix in range(plots_num):
-            #ax[ix].set_title("Temp",color=plot_color)
-            if ix==plots_num-1:
-                ax[ix].set_xlabel(xLab,color=plot_color)
-            ax[ix].set_ylabel(yLab[ix],color=plot_color)
-            #ax[ix].set_facecolor(plot_color)
-            ax[ix].tick_params(labelcolor=plot_color)
-            ax[ix].tick_params(axis='x', colors=plot_color)
-            ax[ix].tick_params(axis='y', colors=plot_color)
-            ax[ix].spines['top'].set_color(plot_color)
-            ax[ix].spines['bottom'].set_color(plot_color)
-            ax[ix].spines['left'].set_color(plot_color)
-            ax[ix].spines['right'].set_color(plot_color)
-        ax[0].plot(time,temp)#,label=label1[num])
+            posVal=True
+        
+    if posVal and negVal:
+        ax[0].axhline(y=0, color="grey", linestyle='--')
 
-        #Draw zero-line only if there are both neg and pos values
-        posVal=False
-        negVal=False
-        for iT in temp:
-            if iT<0:
-                negVal=True
-            else:
-                posVal=True
-            
-        if posVal and negVal:
-            ax[0].axhline(y=0, color="grey", linestyle='--')
+    ax[1].plot(time,humidi)#,label=label1[num])
+    ax[2].plot(time,pressure)#,label=label1[num])
 
-        ax[1].plot(time,humidi)#,label=label1[num])
-        ax[2].plot(time,pressure)#,label=label1[num])
+    #Plot time so it is easy to check
+    textposX = 0.126#0.1*ax[0].get_xlim()[1]
+    textposY = 0.892#0.79*ax[0].get_ylim()[1]
+    #print(textposX,textposY)
+    #fig.text(textposX,textposY,'{}'.format("asd"))#time[len(time)-1]))
+    plt.figtext(textposX,textposY, "{}".format(str(time[len(time)-1]).split('T')[1]), color=plot_color)
 
-        #Plot time so it is easy to check
-        textposX = 0.126#0.1*ax[0].get_xlim()[1]
-        textposY = 0.892#0.79*ax[0].get_ylim()[1]
-        #print(textposX,textposY)
-        #fig.text(textposX,textposY,'{}'.format("asd"))#time[len(time)-1]))
-        plt.figtext(textposX,textposY, "{}".format(str(time[len(time)-1]).split('T')[1]), color=plot_color)
+    #ax.legend()
+    cdf = mplDates.ConciseDateFormatter(ax[plots_num-1].xaxis.get_major_locator())
+    ax[plots_num-1].xaxis.set_major_formatter(cdf)
+    #Remove x-axis from others
+    for ix in range(plots_num-1):
+        ax[ix].axes.xaxis.set_ticklabels([])
+        ax[ix].axes.xaxis.set_ticklabels([])
 
-        #ax.legend()
-        cdf = mplDates.ConciseDateFormatter(ax[plots_num-1].xaxis.get_major_locator())
-        ax[plots_num-1].xaxis.set_major_formatter(cdf)
-        #Remove x-axis from others
-        for ix in range(plots_num-1):
-            ax[ix].axes.xaxis.set_ticklabels([])
-            ax[ix].axes.xaxis.set_ticklabels([])
+    #No space between figures
+    plt.subplots_adjust(hspace=0.0)
 
-        #No space between figures
-        plt.subplots_adjust(hspace=0.0)
-
-        plt.savefig(args.output,bbox_inches='tight',transparent=True)
-        if not args.quiet:
-            #plt.subplot_tool()
-            plt.show()
+    plt.savefig(args.output,bbox_inches='tight',transparent=True)
+    if not args.quiet:
+        #plt.subplot_tool()
+        plt.show()
 
 
