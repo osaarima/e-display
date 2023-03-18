@@ -23,6 +23,7 @@ from urllib.request import urlopen
 import re
 from datetime import datetime
 import drawWeather
+import matplotlib.pyplot as plt
 
 #The job of this class is to keep track of button presses and give signal
 #when a decision of button presses has been made.
@@ -100,7 +101,7 @@ class WeatherImageManipulations:
     def set_skip_lines(self,new_skip):
         self.skip_lines=new_skip
 
-    def create_weather_image(self, filename_pic, flip_pic=True):
+    def create_weather_image(self, filename_pic, flip_pic=True, show_plot=True):
         #Define fonts
 
         if self.show_in_out==1:
@@ -145,7 +146,10 @@ class WeatherImageManipulations:
 
         #Then comes the text
         printTime  = "{}".format(savedTime)
-        printData  = "{} °C\n{} %".format(savedTemp, savedHumi)
+        if show_plot:
+            printData  = "{} °C".format(savedTemp)
+        else:
+            printData  = "{} °C\n{} %".format(savedTemp, savedHumi)
         yCoord = 3
         draw.text((5,yCoord), printTitle, font=self.bold_font, fill=BLACK,)
         yCoord+=self.boldSize+3
@@ -155,6 +159,10 @@ class WeatherImageManipulations:
 
         #This only checks the box where said text will fit
         (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((5,yCoord), printData, font=self.bold_font)
+
+        if show_plot:
+            plt_img=make_plot_image(meas_time,temp,bbRight,self.height-bbBottom)
+            image.paste(plt_img, box=(5,bbBottom), mask=None)
 
         with Image.open(filename_pic).convert("RGB") as paste_img:
             #Can I get automatic contrast/brightness enhancement working?
@@ -346,6 +354,43 @@ def find_sun_info(country_name, city_name, pre_year=-1, pre_month=-1, pre_date=-
         print("Error:",er,url)
         return ("","","")
 
+#Make a plot from given data to width,height space in pixels
+def make_plot_image(x_plot,y_plot,width,height):
+    px = 1/plt.rcParams['figure.dpi'] #one pixel in inches
+    fig, ax = plt.subplots(1,1,figsize=(width*px,height*px))
+    plot_color="white"
+    ax.set_xlabel("",color=plot_color)
+    ax.set_ylabel("",color=plot_color)
+    #ax.set_facecolor(plot_color)
+    ax.tick_params(labelcolor=plot_color)
+    ax.tick_params(axis='x', colors=plot_color)
+    ax.tick_params(axis='y', colors=plot_color)
+    ax.spines['top'].set_color(plot_color)
+    ax.spines['bottom'].set_color(plot_color)
+    ax.spines['left'].set_color(plot_color)
+    ax.spines['right'].set_color(plot_color)
+
+    #print(fig.canvas.get_width_height())
+
+    ax.plot(x_plot,y_plot,color="black")
+
+    posVal=False
+    negVal=False
+    for iT in y_plot:
+        if iT<0:
+            negVal=True
+        else:
+            posVal=True
+        
+    if posVal and negVal:
+        ax.axhline(y=0, color="black", linestyle='--')
+
+    fig.canvas.draw()
+    plt_img = Image.frombytes("RGB", fig.canvas.get_width_height(), fig.canvas.tostring_rgb())
+    plt_img.save("test.png")
+    return plt_img
+
+
 def sakarin_villapaitapeli_mini(display,up_but,down_but):
     with Image.open("pics/sakari/peli1.png").convert("RGB") as skr_img:
         show_image(display,skr_img)
@@ -402,6 +447,7 @@ def show_image(display,image):
     return
 
 if __name__ == "__main__":
+    #make_plot_image([1,2,3,4],[1,2,3,4])
     parser = argparse.ArgumentParser(description="This displays the weather information measured by readRuuvi.py in an Raspberry pi e-ink display. The display is updated every five minutes starting from the time the program is first run. The first button changes between inside and outside weather information, and the second button refreshes the screen, starting the five minute timer from the beginning.",
                                      epilog="Created by OS")
     parser.add_argument("--rand",
@@ -491,6 +537,7 @@ if __name__ == "__main__":
                   display.width, display.height)
     listener = ListenButtons()
     listener.set_resetting_time(1)
+    show_plot=False
     try:
         while True:
             # only query the weather every 5 minutes (and on first run)
@@ -499,19 +546,24 @@ if __name__ == "__main__":
                     show_this_pic = select_random_not_this(totalPics,show_this_pic)
                 weather_refresh = time.monotonic()
                 image = image_manip.create_weather_image(filenames[show_this_pic],
-                                                        "yuuka" in filenames[show_this_pic])
+                                                        "yuuka" in filenames[show_this_pic],
+                                                        show_plot)
                 #If image was not successfully made, lets try another time in a new loop
                 show_image(display,image)
 
             if args.onetime:
                 break
 
+            show_plot=False
             override_randomizer = False
             if listener.check_button_state(up_button.value,down_button.value):
                 if listener.n1>0 and listener.n2==0:
-                    if listener.n1==2:
+                    if listener.n1==3:
                         image = image_manip.create_sun_image("finland","jyvaskyla")
                         show_image(display,image)
+                    elif listener.n1==2:
+                        show_plot=True
+                        weather_refresh=None
                     else:
                         image_manip.switch_in_out()
                         weather_refresh=None
