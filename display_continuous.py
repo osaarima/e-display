@@ -39,7 +39,7 @@ class ListenButtons:
 
 
     def set_resetting_time(self,new_time):
-        self.resetting_time=2
+        self.resetting_time=new_time
         return
 
     #Return true if buttons were pressed and a decision of press has been made.
@@ -53,11 +53,13 @@ class ListenButtons:
             self.n2=0
             self.time_at_press = None
             self.reset=False
-        #up_button.value gives False if pressed
+        #button.value gives False if pressed
         button1_was_pressed = not button1
         button2_was_pressed = not button2
         #We do not want a long press to count as multiple presses
         if self.last_state1!=button1_was_pressed and button1_was_pressed:
+            #if self.time_at_press:
+            #    print("Press interval:",time.monotonic()-self.time_at_press,"resetting time:",self.resetting_time)
             self.time_at_press = time.monotonic()
             self.n1+=1
         if self.last_state2!=button2_was_pressed and button2_was_pressed:
@@ -68,7 +70,6 @@ class ListenButtons:
         if self.time_at_press and time.monotonic()-self.time_at_press > self.resetting_time:
             self.reset=True
             return True
-        #print(self.n1,self.n2)
         return False
 
 
@@ -91,6 +92,10 @@ class WeatherImageManipulations:
         self.smol_font = ImageFont.truetype(
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", self.smolSize
         )
+        self.smollerSize=18
+        self.smoller_font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", self.smollerSize
+        )
 
     def switch_in_out(self):
         if self.show_in_out==1:
@@ -101,7 +106,7 @@ class WeatherImageManipulations:
     def set_skip_lines(self,new_skip):
         self.skip_lines=new_skip
 
-    def create_weather_image(self, filename_pic, flip_pic=True, show_plot=True):
+    def create_weather_image(self, filename_pic, flip_pic=True):
         #Define fonts
 
         if self.show_in_out==1:
@@ -146,23 +151,27 @@ class WeatherImageManipulations:
 
         #Then comes the text
         printTime  = "{}".format(savedTime)
-        if show_plot:
-            printData  = "{} °C".format(savedTemp)
-        else:
-            printData  = "{} °C\n{} %".format(savedTemp, savedHumi)
-        yCoord = 3
-        draw.text((5,yCoord), printTitle, font=self.bold_font, fill=BLACK,)
+        printData  = "{} °C\n{} %".format(savedTemp, savedHumi)
+        xCoord = 3
+        yCoord = 2
+        draw.text((xCoord,yCoord), printTitle, font=self.bold_font, fill=BLACK,)
+        (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((xCoord,yCoord), printTitle, font=self.bold_font)
+        #This needs to be done in order to match the text on the bottom level
+        (bbLeft2, bbTop2, bbRight2, bbBottom2) = draw.textbbox((xCoord,yCoord), printTime, font=self.smoller_font)
+        draw.text((xCoord+bbRight+1,yCoord+bbBottom-bbBottom2), printTime, font=self.smoller_font, fill=BLACK,)
         yCoord+=self.boldSize+3
-        draw.text((5,yCoord), printTime, font=self.smol_font, fill=BLACK,)
-        yCoord+=self.smolSize+6
-        draw.text((5,yCoord), printData, font=self.bold_font, fill=BLACK,)
+        draw.text((xCoord,yCoord), printData, font=self.bold_font, fill=BLACK,)
 
         #This only checks the box where said text will fit
-        (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((5,yCoord), printData, font=self.bold_font)
+        (bbLeft2, bbTop2, bbRight2, bbBottom2) = draw.textbbox((xCoord+bbRight+1,yCoord+bbBottom-bbBottom2), printTime, font=self.smoller_font)
+        (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((xCoord,yCoord), printData, font=self.bold_font)
 
-        if show_plot:
-            plt_img=make_plot_image(meas_time,temp,bbRight,self.height-bbBottom)
-            image.paste(plt_img, box=(5,bbBottom), mask=None)
+        #bbRight will restrict plot and the pic so let's choose the rightmost value
+        if bbRight2>bbRight:
+            bbRight=bbRight2
+
+        plt_img=make_plot_image(meas_time,temp,bbRight,self.height-bbBottom-1)
+        image.paste(plt_img, box=(xCoord,bbBottom+1), mask=None)
 
         with Image.open(filename_pic).convert("RGB") as paste_img:
             #Can I get automatic contrast/brightness enhancement working?
@@ -294,6 +303,34 @@ class WeatherImageManipulations:
         return image
 
 
+    #With this one can test how fast the screen updates. Can choose also whether you
+    #print at the screen or to the command line.
+    def fps_test(self,display,b_draw_text):
+        try:
+            time_delta = 0.0
+            while True:
+                timing1 = time.perf_counter()
+                #print("Timing:",timing2-timing1)
+                image = Image.new("RGB", (self.width, self.height), color=WHITE)
+                if b_draw_text:
+                    draw = ImageDraw.Draw(image)
+                    printText = "Time delta: {:0.3f}".format(time_delta)
+                    (bbLeft, bbTop, bbRight, bbBottom) = draw.textbbox((0,0), printText, font=self.smol_font)
+                    draw.text((self.width/2.0-bbRight/2.0,self.height/2.0-bbBottom/2.0), printText, font=self.smol_font, fill=BLACK,)
+                    show_image(display,image)
+                else:
+                    #print("FPS: {:0.3f}, Delta: {:0.3f}".format(1.0/time_delta,time_delta))
+                    print("Delta: {:0.3f}".format(time_delta))
+                    show_image(display,image)
+                timing2 = time.perf_counter()
+                time_delta = timing2-timing1
+                time.sleep(0.05)
+        except KeyboardInterrupt:
+            print("\nFPS test interrupted, exiting")
+        return
+
+
+
 
 #Finds and returns the length of day, sunrise, and sundown for a given city
 #either from the timeanddate.com wep page or by argument. If there is a nightless
@@ -360,7 +397,7 @@ def make_plot_image(x_plot,y_plot,width,height):
     fig, ax = plt.subplots(1,1,figsize=(width*px,height*px))
     plot_color="white"
     ax.set_xlabel("",color=plot_color)
-    ax.set_ylabel("",color=plot_color)
+    ax.set_ylabel("T",color=plot_color)
     #ax.set_facecolor(plot_color)
     ax.tick_params(labelcolor=plot_color)
     ax.tick_params(axis='x', colors=plot_color)
@@ -370,7 +407,7 @@ def make_plot_image(x_plot,y_plot,width,height):
     ax.spines['left'].set_color(plot_color)
     ax.spines['right'].set_color(plot_color)
 
-    #print(fig.canvas.get_width_height())
+    plt.subplots_adjust(left=0.0,right=1.0,top=1.0,bottom=0.0)
 
     ax.plot(x_plot,y_plot,color="black")
 
@@ -387,7 +424,7 @@ def make_plot_image(x_plot,y_plot,width,height):
 
     fig.canvas.draw()
     plt_img = Image.frombytes("RGB", fig.canvas.get_width_height(), fig.canvas.tostring_rgb())
-    plt_img.save("test.png")
+    #plt_img.save("test.png")
     return plt_img
 
 
@@ -447,7 +484,6 @@ def show_image(display,image):
     return
 
 if __name__ == "__main__":
-    #make_plot_image([1,2,3,4],[1,2,3,4])
     parser = argparse.ArgumentParser(description="This displays the weather information measured by readRuuvi.py in an Raspberry pi e-ink display. The display is updated every five minutes starting from the time the program is first run. The first button changes between inside and outside weather information, and the second button refreshes the screen, starting the five minute timer from the beginning.",
                                      epilog="Created by OS")
     parser.add_argument("--rand",
@@ -475,7 +511,12 @@ if __name__ == "__main__":
                         default="/home/piirakka/weather.csv")
     parser.add_argument("--onetime",
                         "-o",
-                        help="Run the refresh only one time. Mainly used for testing",
+                        help="Run the refresh only one time. Mainly used for testing.",
+                        action="store_true",
+                        default=False)
+    parser.add_argument("--fpstest",
+                        "-t",
+                        help="Run a test for how long the screen takes to update.",
                         action="store_true",
                         default=False)
     args = parser.parse_args()
@@ -536,8 +577,9 @@ if __name__ == "__main__":
                   "e6:89:18:c1:32:1f", "fc:41:f4:c5:0c:08",
                   display.width, display.height)
     listener = ListenButtons()
-    listener.set_resetting_time(1)
-    show_plot=False
+    listener.set_resetting_time(0.8)
+    if args.fpstest:
+        image_manip.fps_test(display,True)
     try:
         while True:
             # only query the weather every 5 minutes (and on first run)
@@ -545,25 +587,24 @@ if __name__ == "__main__":
                 if randomize_every_update and not override_randomizer:
                     show_this_pic = select_random_not_this(totalPics,show_this_pic)
                 weather_refresh = time.monotonic()
+                #timing1 = time.perf_counter()
                 image = image_manip.create_weather_image(filenames[show_this_pic],
-                                                        "yuuka" in filenames[show_this_pic],
-                                                        show_plot)
+                                                        "yuuka" in filenames[show_this_pic])
+                #timing2 = time.perf_counter()
+                #print("Timing:",timing2-timing1)
+
                 #If image was not successfully made, lets try another time in a new loop
                 show_image(display,image)
 
             if args.onetime:
                 break
 
-            show_plot=False
             override_randomizer = False
             if listener.check_button_state(up_button.value,down_button.value):
                 if listener.n1>0 and listener.n2==0:
-                    if listener.n1==3:
+                    if listener.n1==2:
                         image = image_manip.create_sun_image("finland","jyvaskyla")
                         show_image(display,image)
-                    elif listener.n1==2:
-                        show_plot=True
-                        weather_refresh=None
                     else:
                         image_manip.switch_in_out()
                         weather_refresh=None
