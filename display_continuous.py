@@ -330,12 +330,13 @@ class WeatherImageManipulations:
         return
 
 
-
-
 #Finds and returns the length of day, sunrise, and sundown for a given city
 #either from the timeanddate.com wep page or by argument. If there is a nightless
 #night, returns ("nightless","nightless","nightless"), or if there is a sunless
 #day, returns ("sunless","sunless","sunless"). In case of failure returns ("","","")
+#
+#Some parts of this function and the general inspiration from this repository:
+#https://github.com/I-pot/CurrencyFluctuations
 def find_sun_info(country_name, city_name, pre_year=-1, pre_month=-1, pre_date=-1):
     if pre_year==-1 and pre_month==-1 and pre_date==-1:
         currTime = str(datetime.now().date()).split('-')
@@ -390,6 +391,7 @@ def find_sun_info(country_name, city_name, pre_year=-1, pre_month=-1, pre_date=-
     except OSError as er:
         print("Error:",er,url)
         return ("","","")
+
 
 #Make a plot from given data to width,height space in pixels
 def make_plot_image(x_plot,y_plot,width,height):
