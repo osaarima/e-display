@@ -151,7 +151,7 @@ class WeatherImageManipulations:
 
         #Then comes the text
         printTime  = "{}".format(savedTime)
-        printData  = "{} °C\n{} %".format(savedTemp, savedHumi)
+        printData  = "{:.2f} °C\n{:.2f} %".format(savedTemp, savedHumi)
         xCoord = 3
         yCoord = 2
         draw.text((xCoord,yCoord), printTitle, font=self.bold_font, fill=BLACK,)
