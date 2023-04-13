@@ -352,8 +352,12 @@ def find_sun_info(country_name, city_name, pre_year=-1, pre_month=-1, pre_date=-
         with urlopen(url) as page:
             html_bytes = page.read()
             html = html_bytes.decode("utf-8")
-            date_pattern = "data-day={}.*?data-day={}".format(intDate,intDate+1)
-            date_result = re.findall(date_pattern, html, re.IGNORECASE)[0]
+            date_pattern = "data-day={}.*?</tr>".format(intDate,intDate+1)
+            date_results = re.findall(date_pattern, html, re.IGNORECASE)
+
+            if len(date_results)==0:
+                return ("","","")
+            date_result = date_results[0]
 
             #Let's first check if there is sun up or down at all.
             nightless_night_pattern = "Up all day"
@@ -533,7 +537,7 @@ if __name__ == "__main__":
     down_button = digitalio.DigitalInOut(board.D5)
     down_button.switch_to_input()
 
-    #print(find_sun_info("finland","sodankyla",2023,5,24))
+    #print(find_sun_info("finland","jyvaskyla",2023,3,31))
 
     # Initialize the Display
     display = Adafruit_SSD1680(     # Newer eInk Bonnet
