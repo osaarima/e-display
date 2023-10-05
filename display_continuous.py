@@ -431,14 +431,15 @@ def make_plot_image(x_plot,y_plot,width,height):
     fig.canvas.draw()
     plt_img = Image.frombytes("RGB", fig.canvas.get_width_height(), fig.canvas.tostring_rgb())
     #plt_img.save("test.png")
+    plt.close('all') #Let's close all possible matplotlib windows so garbage can be collected.
     return plt_img
 
 
 def sakarin_villapaitapeli_mini(display,up_but,down_but):
-    with Image.open("pics/sakari/peli1.png").convert("RGB") as skr_img:
-        show_image(display,skr_img)
-    gamestate=0
     try:
+        with Image.open("pics/sakari/peli1.png").convert("RGB") as skr_img:
+            show_image(display,skr_img)
+        gamestate=0
         while True:
             if gamestate==0:
                 if not up_but.value or not down_but.value:
@@ -469,8 +470,11 @@ def sakarin_villapaitapeli_mini(display,up_but,down_but):
                     return
 
             time.sleep(0.05)
+    except FileNotFoundError:
+        #If some of the elements could not be resolved, let's try to run the game again.
+        sakarin_villapaitapeli_mini(display,up_but,down_but)
     except KeyboardInterrupt:
-        print("\nInterrupted. Exiting program...")
+        print("\nInterrupted. Exiting Sakarin villapaitapeli...")
     return
 
 def select_random_not_this(max_plus_one, not_this_one):
